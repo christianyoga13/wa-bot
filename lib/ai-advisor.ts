@@ -96,8 +96,8 @@ Tugasmu:
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-2.0-flash (fast, high quality, free tier)
-    const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' });
+    // Use gemini-3.8-flash (fast, high quality, free tier)
+    const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
 
     const result = await model.generateContent(prompt);
     const text = result.response.text();
@@ -105,11 +105,10 @@ Tugasmu:
     incrementRateLimit();
     return `🤖 *Analisa & Saran Finansial AI*\n\n${text.trim()}`;
   } catch (err: any) {
-    console.error('Error generating AI advice with gemini-2.0-flash, attempting fallback:', err);
+    console.error('Error generating AI advice with gemini-3.8-flash, attempting fallback:', err);
     try {
-      // Fallback to gemini-1.5-flash if 2.0 has temporary region or model availability issue
       const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
+      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
       const result = await model.generateContent(prompt);
       incrementRateLimit();
       return `🤖 *Analisa & Saran Finansial AI*\n\n${result.response.text().trim()}`;
