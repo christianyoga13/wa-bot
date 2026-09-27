@@ -40,9 +40,12 @@ export const DEFAULT_CATEGORY_KEYWORDS: Record<string, string[]> = {
  */
 export function parseAmount(raw: string): number | null {
   if (!raw) return null;
-  const cleaned = raw.trim().toLowerCase();
+  let cleaned = raw.trim().toLowerCase();
 
-  // match "1.5jt" or "2jt" or "1,5jt"
+  // Strip leading currency symbols: "rp", "rp.", "idr"
+  cleaned = cleaned.replace(/^(?:rp\.?|idr)\s*/i, '').trim();
+
+  // match "1.5jt", "2jt", "1,5jt", "1.5 juta", "2 jt"
   const jtMatch = cleaned.match(/^([\d.,]+)\s*(?:jt|juta|m)$/);
   if (jtMatch) {
     const rawNum = jtMatch[1].replace(',', '.');
@@ -50,8 +53,8 @@ export function parseAmount(raw: string): number | null {
     return isNaN(val) ? null : Math.round(val * 1_000_000);
   }
 
-  // match "500k" or "25.5k" or "25,5k"
-  const kMatch = cleaned.match(/^([\d.,]+)\s*k$/);
+  // match "500k", "25.5k", "150rb", "150 ribu", "150 k", "150 rb"
+  const kMatch = cleaned.match(/^([\d.,]+)\s*(?:k|rb|ribu)$/);
   if (kMatch) {
     const rawNum = kMatch[1].replace(',', '.');
     const val = parseFloat(rawNum);
@@ -60,25 +63,12 @@ export function parseAmount(raw: string): number | null {
 
   // match standard digits with dot or comma as thousand separator
   // e.g. "25.000", "25,000", "25000"
-  // remove dots and commas if followed by 3 digits
   let numStr = cleaned.replace(/[^\d.,]/g, '');
   if (numStr.includes('.') && !numStr.includes(',')) {
-    // If it looks like 25.000, remove dots
-    const parts = numStr.split('.');
-    if (parts.length > 1 && parts.every((p, idx) => idx === 0 || p.length === 3)) {
-      numStr = numStr.replace(/\./g, '');
-    } else {
-      numStr = numStr.replace(/\./g, '');
-    }
+    numStr = numStr.replace(/\./g, '');
   } else if (numStr.includes(',') && !numStr.includes('.')) {
-    const parts = numStr.split(',');
-    if (parts.length > 1 && parts.every((p, idx) => idx === 0 || p.length === 3)) {
-      numStr = numStr.replace(/,/g, '');
-    } else {
-      numStr = numStr.replace(/,/g, '');
-    }
+    numStr = numStr.replace(/,/g, '');
   } else if (numStr.includes('.') && numStr.includes(',')) {
-    // e.g. 1.000.000,00 -> remove dots, discard decimal
     numStr = numStr.split(',')[0].replace(/\./g, '');
   }
 
@@ -208,36 +198,12 @@ export function parseMessage(
     }
   }
 
-  // 6. Pengeluaran Rutin: Tambah Rutin
-  // tambah rutin 150000 netflix tgl 5
-  // tambah rutin 150k spotify tanggal 20
-  const addRecurringMatch = trimmed.match(
-    /^(?:tambah\s+rutin|rutin\s+tambah)\s+([0-9.,kKjJtTaA]+)\s+(.+?)\s+(?:tgl|tanggal)\s+(\d{1,2})(?:\s+#(\w+))?$/i
-  );
-  if (addRecurringMatch) {
-    const amount = parseAmount(addRecurringMatch[1]);
-    const name = addRecurringMatch[2].trim();
-    const dueDate = parseInt(addRecurringMatch[3], 10);
-    const hashtagCat = addRecurringMatch[4];
-
-    if (amount && name && dueDate >= 1 && dueDate <= 31) {
-      const category = detectCategory(name, hashtagCat, customCategoryMap);
-      return {
-        intent: 'ADD_RECURRING',
-        amount,
-        name,
-        dueDate,
-        category,
-        rawMessage: trimmed
-      };
-    }
-  }
-
-  // 7. Pengeluaran Rutin: List Rutin
+  // 6. Pengeluaran Rutin: List Rutin
   if (
     lower === 'list rutin' ||
     lower === 'daftar rutin' ||
-    lower === 'rutin list'
+    lower === 'rutin list' ||
+    lower === 'cek rutin'
   ) {
     return {
       intent: 'LIST_RECURRING',
@@ -245,7 +211,7 @@ export function parseMessage(
     };
   }
 
-  // 8. Pengeluaran Rutin: Hapus / Nonaktif Rutin
+  // 7. Pengeluaran Rutin: Hapus / Nonaktif Rutin
   // hapus rutin netflix / nonaktif rutin spotify
   const delRecurringMatch = trimmed.match(/^(?:hapus\s+rutin|nonaktif\s+rutin|batal\s+rutin)\s+(.+)$/i);
   if (delRecurringMatch) {
@@ -257,15 +223,85 @@ export function parseMessage(
     };
   }
 
-  // 9. Catat Pemasukan
+  // 8. Pengeluaran Rutin: Panduan / Bantuan
+  if (
+    lower === 'tambah rutin' ||
+    lower === 'rutin' ||
+    lower === 'pengeluaran rutin' ||
+    lower === 'cara tambah rutin' ||
+    lower === 'bantuan rutin'
+  ) {
+    return {
+      intent: 'HELP_RECURRING',
+      rawMessage: trimmed
+    };
+  }
+
+  // 9. Pengeluaran Rutin: Tambah Rutin (Fleksibel)
+  // Contoh:
+  // - tambah rutin 150000 netflix tgl 5
+  // - tambah rutin 150k spotify tanggal 20
+  // - tambah rutin netflix 150rb tgl 5
+  // - tambah rutin netflix 150k tiap tgl 5
+  // - tambah rutin netflix 150k setiap tgl 5
+  // - tambah rutin netflix 150k tiap bulan tgl 5
+  // - tambah rutin 150k netflix tgl 5 tiap bulan
+  // - rutin netflix 150k tgl 5
+  const recurringPrefixMatch = trimmed.match(
+    /^(?:tambah\s+(?:pengeluaran\s+)?rutin|rutin\s+tambah|pengeluaran\s+rutin|rutin)\s+(.+)$/i
+  );
+  if (recurringPrefixMatch) {
+    let body = recurringPrefixMatch[1].trim();
+
+    // Extract hashtag category if any
+    const hashtagMatch = body.match(/#(\w+)/);
+    const hashtagCat = hashtagMatch ? hashtagMatch[1] : undefined;
+    body = body.replace(/#\w+/g, '').trim();
+
+    // Strip recurrent frequency words: "tiap bulan", "setiap bulan", "per bulan", "perbulan"
+    body = body.replace(/\b(?:tiap|setiap|per)\s*bulan\b/gi, '').trim();
+    body = body.replace(/\bperbulan\b/gi, '').trim();
+
+    // Extract due date: "tgl 5", "tanggal 20", "tiap tgl 5", "setiap tanggal 10"
+    const dateMatch = body.match(/(?:\b(?:tiap|setiap)\s+)?(?:tgl|tanggal)\s*(\d{1,2})\b/i);
+    if (dateMatch) {
+      const dueDate = parseInt(dateMatch[1], 10);
+      if (dueDate >= 1 && dueDate <= 31) {
+        body = body.replace(dateMatch[0], '').trim();
+
+        // Extract amount token
+        const amountRegex = /(?:rp\.?\s*)?(?:\d+(?:[.,]\d+)?\s*(?:jt|juta|m|k|rb|ribu)|\d{1,3}(?:[.,]\d{3})+|\d+)/i;
+        const matchAmount = body.match(amountRegex);
+        if (matchAmount) {
+          const amount = parseAmount(matchAmount[0]);
+          const name = body.replace(matchAmount[0], '').replace(/\s+/g, ' ').trim();
+          if (amount && name) {
+            const category = detectCategory(name, hashtagCat, customCategoryMap);
+            return {
+              intent: 'ADD_RECURRING',
+              amount,
+              name,
+              dueDate,
+              category,
+              rawMessage: trimmed
+            };
+          }
+        }
+      }
+    }
+  }
+
+  // 10. Catat Pemasukan
   // masuk 5000000 gaji bulanan
   // masuk 500k bonus
-  const incomeMatch = trimmed.match(/^(?:masuk|income|in|m)\s+([0-9.,kKjJtTaA]+)(?:\s+(.*))?$/i);
+  // masuk 150rb freelance
+  const incomeMatch = trimmed.match(
+    /^(?:masuk|income|in|m)\s+(?:rp\.?\s*)?([0-9.,]+(?:\s*(?:k|rb|ribu|jt|juta|m))?)(?:\s+(.*))?$/i
+  );
   if (incomeMatch) {
     const amount = parseAmount(incomeMatch[1]);
     const rest = (incomeMatch[2] || '').trim();
     if (amount) {
-      // Check for hashtag category
       const hashtagMatch = rest.match(/#(\w+)/);
       const hashtagCategory = hashtagMatch ? hashtagMatch[1] : undefined;
       const cleanNote = rest.replace(/#\w+/, '').trim() || 'Pemasukan';
@@ -281,10 +317,13 @@ export function parseMessage(
     }
   }
 
-  // 10. Catat Pengeluaran
+  // 11. Catat Pengeluaran
   // keluar 25000 makan siang [#food]
   // k 25k kopi susu
-  const expensePrefixMatch = trimmed.match(/^(?:keluar|expense|out|k)\s+([0-9.,kKjJtTaA]+)(?:\s+(.*))?$/i);
+  // keluar 150rb belanja
+  const expensePrefixMatch = trimmed.match(
+    /^(?:keluar|expense|out|k)\s+(?:rp\.?\s*)?([0-9.,]+(?:\s*(?:k|rb|ribu|jt|juta|m))?)(?:\s+(.*))?$/i
+  );
   if (expensePrefixMatch) {
     const amount = parseAmount(expensePrefixMatch[1]);
     const rest = (expensePrefixMatch[2] || '').trim();
@@ -304,8 +343,10 @@ export function parseMessage(
     }
   }
 
-  // 11. Shortcut Format: "<amount> <note>" (e.g. "25000 kopi", "25k makan siang")
-  const shortcutMatch = trimmed.match(/^([0-9.,]+[kKjJtTaA]?)\s+(.+)$/);
+  // 12. Shortcut Format: "<amount> <note>" (e.g. "25000 kopi", "25k makan siang", "150rb baju")
+  const shortcutMatch = trimmed.match(
+    /^(?:rp\.?\s*)?([0-9.,]+(?:\s*(?:k|rb|ribu|jt|juta|m))?)\s+(.+)$/i
+  );
   if (shortcutMatch) {
     const amount = parseAmount(shortcutMatch[1]);
     const rest = shortcutMatch[2].trim();
@@ -325,7 +366,7 @@ export function parseMessage(
     }
   }
 
-  // 12. Fallback / Unknown
+  // 13. Fallback / Unknown
   return {
     intent: 'UNKNOWN',
     rawMessage: trimmed

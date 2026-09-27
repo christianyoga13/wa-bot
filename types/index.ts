@@ -40,6 +40,7 @@ export type IntentType =
   | 'ADD_RECURRING'
   | 'LIST_RECURRING'
   | 'DELETE_RECURRING'
+  | 'HELP_RECURRING'
   | 'HELP'
   | 'UNKNOWN';
 

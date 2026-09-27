@@ -87,6 +87,9 @@ export async function handleUserMessage(
     case 'DELETE_RECURRING':
       return await handleDeleteRecurring(parsed.name || '');
 
+    case 'HELP_RECURRING':
+      return handleHelpRecurring();
+
     case 'HELP':
     case 'UNKNOWN':
     default:
@@ -467,9 +470,36 @@ async function handleDeleteRecurring(name: string): Promise<ExecutionResult> {
 }
 
 /**
+ * Handle recurring help / tutorial message
+ */
+function handleHelpRecurring(): ExecutionResult {
+  const replyText =
+    `🔁 *Panduan Pengeluaran Rutin Bulanan*\n\n` +
+    `Jadwalkan tagihan atau langganan rutin bulanan (seperti WiFi, Netflix, Listrik, Kos) agar dicatat otomatis setiap bulan sesuai tanggal jatuh tempo.\n\n` +
+    `📌 *Format Perintah:*\n` +
+    `• \`tambah rutin <jumlah> <nama> tgl <tanggal>\`\n` +
+    `• atau \`tambah rutin <nama> <jumlah> tgl <tanggal>\`\n\n` +
+    `💡 *Contoh:*\n` +
+    `• \`tambah rutin 150rb netflix tgl 5\`\n` +
+    `• \`tambah rutin spotify 55k tgl 20\`\n` +
+    `• \`tambah rutin wifi indihome 350000 tgl 15\`\n` +
+    `• \`tambah rutin kost 1.5jt tgl 1\`\n\n` +
+    `📋 *Perintah Terkait:*\n` +
+    `• \`list rutin\` — Cek daftar rutin aktif\n` +
+    `• \`hapus rutin <nama>\` — Menonaktifkan rutin\n\n` +
+    `_Sistem Vercel Cron akan otomatis mencatatnya tiap bulan dan mengirimkan notifikasi WA ke Anda._`;
+
+  return { success: true, replyText };
+}
+
+/**
  * Handle unknown / help message
  */
 function handleHelp(rawText: string): ExecutionResult {
+  if (rawText.toLowerCase().includes('rutin')) {
+    return handleHelpRecurring();
+  }
+
   const replyText =
     `🤔 *Format pesan belum dikenali:* "${rawText}"\n\n` +
     `*Contoh format yang didukung:*\n` +
