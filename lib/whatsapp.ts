@@ -50,7 +50,7 @@ export async function sendWhatsAppTextMessage({ to, body }: SendMessageOptions):
 
     if (!res.ok) {
       const errJson = await res.json().catch(() => ({}));
-      console.error('WhatsApp API send error:', errJson);
+      console.error(`WhatsApp API send error (${res.status}):`, JSON.stringify(errJson));
       return false;
     }
 
