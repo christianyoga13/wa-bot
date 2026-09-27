@@ -23,6 +23,8 @@
 # misc
 .DS_Store
 *.pem
+gen-lang-client-*.json
+credentials/
 
 # debug
 npm-debug.log*

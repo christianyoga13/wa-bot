@@ -1,0 +1,62 @@
+export type TransactionType = 'expense' | 'income';
+
+export interface Transaction {
+  id: string;
+  type: TransactionType;
+  amount: number;
+  category: string;
+  note: string;
+  raw_message: string;
+  source: 'manual' | 'recurring';
+  created_at: string; // ISO 8601
+}
+
+export interface RecurringExpense {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  due_date: number; // 1-31
+  active: boolean;
+  last_run_date?: string; // YYYY-MM-DD
+  created_at: string;
+}
+
+export interface CategoryMapping {
+  keyword: string;
+  category: string;
+}
+
+export type IntentType =
+  | 'RECORD_EXPENSE'
+  | 'RECORD_INCOME'
+  | 'SUMMARY_DAY'
+  | 'SUMMARY_WEEK'
+  | 'SUMMARY_MONTH'
+  | 'DELETE_LAST'
+  | 'EDIT_LAST'
+  | 'MENU'
+  | 'AI_ADVICE'
+  | 'ADD_RECURRING'
+  | 'LIST_RECURRING'
+  | 'DELETE_RECURRING'
+  | 'HELP'
+  | 'UNKNOWN';
+
+export interface ParsedIntent {
+  intent: IntentType;
+  amount?: number;
+  note?: string;
+  category?: string;
+  rawMessage: string;
+  dueDate?: number; // for recurring
+  name?: string; // for recurring
+  period?: 'day' | 'week' | 'month';
+}
+
+export interface ExecutionResult {
+  success: boolean;
+  replyText: string;
+  interactiveType?: 'list' | 'buttons';
+  interactiveData?: any;
+}
