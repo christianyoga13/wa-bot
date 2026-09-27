@@ -94,30 +94,32 @@ Tugasmu:
 4. Gunakan format WhatsApp (gunakan *bold* untuk penekanan dan bullet point, tanpa markdown tabel). Maksimal 150-200 kata agar nyaman dibaca di chat HP.
 `.trim();
 
-  try {
-    const genAI = new GoogleGenerativeAI(apiKey);
-    // Use gemini-3.8-flash (fast, high quality, free tier)
-    const model = genAI.getGenerativeModel({ model: 'gemini-3.8-flash' });
+  const candidateModels = [
+    'gemini-flash-latest',
+    'gemini-3.5-flash',
+    'gemini-3.8-flash'
+  ];
 
-    const result = await model.generateContent(prompt);
-    const text = result.response.text();
+  const genAI = new GoogleGenerativeAI(apiKey);
+  let lastError: any = null;
 
-    incrementRateLimit();
-    return `🤖 *Analisa & Saran Finansial AI*\n\n${text.trim()}`;
-  } catch (err: any) {
-    console.error('Error generating AI advice with gemini-3.8-flash, attempting fallback:', err);
+  for (const modelName of candidateModels) {
     try {
-      const genAI = new GoogleGenerativeAI(apiKey);
-      const model = genAI.getGenerativeModel({ model: 'gemini-2.5-flash' });
+      const model = genAI.getGenerativeModel({ model: modelName });
       const result = await model.generateContent(prompt);
+      const text = result.response.text();
+
       incrementRateLimit();
-      return `🤖 *Analisa & Saran Finansial AI*\n\n${result.response.text().trim()}`;
-    } catch (fallbackErr: any) {
-      console.error('Failed to generate AI advice:', fallbackErr);
-      return (
-        'Maaf, layanan AI Gemini sedang sibuk atau mengalami kendala jaringan. ' +
-        'Silakan cek kembali beberapa saat lagi.'
-      );
+      return `🤖 *Analisa & Saran Finansial AI*\n\n${text.trim()}`;
+    } catch (err: any) {
+      console.warn(`[Gemini] Model ${modelName} unavailable, trying next candidate:`, err.message);
+      lastError = err;
     }
   }
+
+  console.error('All Gemini model candidates failed:', lastError);
+  return (
+    'Maaf, layanan AI Gemini sedang sibuk atau mengalami kendala jaringan. ' +
+    'Silakan cek kembali beberapa saat lagi.'
+  );
 }
